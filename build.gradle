@@ -73,6 +73,27 @@ jar {
     }
 }
 
+task fatJar(type: Jar) {
+    setArchivesBaseName("$project.name-fat")
+
+    manifest {
+        attributes "Main-Class": project.main_class
+    }
+
+    from {
+        configurations.runtimeClasspath.collect {
+            it.isDirectory() ? it : zipTree(it)
+        }
+    }
+
+    with jar
+
+    configure {
+        group = "build"
+        description = "Create an executable jar."
+    }
+}
+
 wrapper {
     gradleVersion = "5.6.2"
     distributionType = Wrapper.DistributionType.ALL
