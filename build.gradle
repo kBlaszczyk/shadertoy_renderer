@@ -52,12 +52,14 @@ dependencies {
             "org.lwjgl:lwjgl",
             "org.lwjgl:lwjgl-glfw",
             "org.lwjgl:lwjgl-opengl",
+            "org.lwjgl:lwjgl-stb",
     )
 
     runtimeOnly(
             "org.lwjgl:lwjgl::$lwjgl_natives",
             "org.lwjgl:lwjgl-glfw::$lwjgl_natives",
             "org.lwjgl:lwjgl-opengl::$lwjgl_natives",
+            "org.lwjgl:lwjgl-stb::$lwjgl_natives",
     )
 }
 

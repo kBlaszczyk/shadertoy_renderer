@@ -1,4 +1,4 @@
-package de.orchound.rendering
+package de.orchound.rendering.opengl
 
 import org.lwjgl.opengl.GL20.*
 import org.lwjgl.opengl.GL30.glBindVertexArray

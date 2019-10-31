@@ -1,15 +1,21 @@
 package de.orchound.rendering.shadertoy
 
-import de.orchound.rendering.Quad
+import de.orchound.rendering.opengl.Quad
 import de.orchound.rendering.Time
 import de.orchound.rendering.Window
+import de.orchound.rendering.opengl.TextureLoader
 import java.io.File
 import java.time.LocalDateTime
 
-class ShadertoyApplication(shaderFile: File) {
+class ShadertoyApplication(shaderFile: File, textureFiles: List<File>) {
 
 	private val window = Window("Shadertoy Renderer", 1280, 720)
-	private val shader = ShadertoyShader(shaderFile)
+	private val textures = textureFiles.map(TextureLoader::loadTexture)
+	private val shader = ShadertoyShader(shaderFile, 2).apply {
+		textures.withIndex().forEach {
+			this.setChannelTexture(it.index, it.value.handle)
+		}
+	}
 	private val quad = Quad()
 	private var frame = 0
 	private var dateTime = LocalDateTime.now()
