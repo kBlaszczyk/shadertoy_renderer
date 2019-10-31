@@ -2,83 +2,25 @@ package de.orchound.rendering.shadertoy
 
 import org.lwjgl.opengl.GL20.*
 import java.io.File
-import java.lang.StringBuilder
 
-class ShadertoyShader(shaderFile: File, private val textureChannelsCount: Int) {
+class ShadertoyShader(private val shaderFile: File, private val textureChannelsCount: Int) {
 
-	private val handle: Int
+	private var handle: Int = 0
 
-	private val resolutionLocation: Int
-	private val timeLocation: Int
-	private val timeDeltaLocation: Int
-	private val frameLocation: Int
-	private val channelTimeLocation: IntArray
-	private val channelResolutionLocation: IntArray
-	private val mouseLocation: Int
-	private val textureChannelLocations: IntArray
-	private val dateLocation: Int
-	private val sampleRateLocation: Int
+	private var resolutionLocation = -1
+	private var timeLocation = -1
+	private var timeDeltaLocation = -1
+	private var frameLocation = -1
+	private val channelTimeLocation = IntArray(4) { -1 }
+	private val channelResolutionLocation = IntArray(4) { -1 }
+	private var mouseLocation = -1
+	private val textureChannelLocations = IntArray(textureChannelsCount) { -1 }
+	private var dateLocation = -1
+	private var sampleRateLocation = -1
 
 	init {
-		val vertexShaderSource = """
-			|#version 330
-			|layout(location = 0) in vec2 in_position;
-			|
-			|void main(void) {
-			|	gl_Position = vec4(in_position, 0.0, 1.0);
-			|}
-		""".trimMargin()
-
-		val fragmentShaderSourceTemplate = """
-			|#version 330
-			|
-			|out vec4 color;
-			|
-			|uniform vec3 iResolution;
-			|uniform float iTime;
-			|uniform float iTimeDelta;
-			|uniform int iFrame;
-			|uniform float iChannelTime[4];
-			|uniform vec3 iChannelResolution[4];
-			|uniform vec4 iMouse;
-			|#SAMPLER2D_UNIFORMS#
-			|uniform vec4 iDate;
-			|uniform float iSampleRate;
-			|
-			|#SHADERTOY_SOURCE#
-			|
-			|void main(void) {
-			|	mainImage(color, gl_FragCoord.xy);
-			|}
-		""".trimMargin()
-
-		val fragmentShaderSource = fragmentShaderSourceTemplate
-			.replace("#SAMPLER2D_UNIFORMS#", generateSampler2dUniformDeclaration())
-			.replace("#SHADERTOY_SOURCE#", loadShaderSource(shaderFile))
-
-		handle = createShaderProgram(vertexShaderSource, fragmentShaderSource)
-
-		resolutionLocation = getUniformLocation("iResolution")
-		timeLocation = getUniformLocation("iTime")
-		timeDeltaLocation = getUniformLocation("iTimeDelta")
-		frameLocation = getUniformLocation("iFrame")
-		channelTimeLocation = (0 .. 3).map {
-			getUniformLocation("iChannelTime[$it]")
-		}.toIntArray()
-		channelResolutionLocation = (0 .. 3).map {
-			getUniformLocation("iChannelResolution[$it]")
-		}.toIntArray()
-		mouseLocation = getUniformLocation("iMouse")
-		dateLocation = getUniformLocation("iDate")
-		sampleRateLocation = getUniformLocation("iSampleRate")
-
-		textureChannelLocations = (0 until textureChannelsCount).map { index ->
-			getUniformLocation("iChannel$index")
-		}.toIntArray()
-
-		bind()
-		initTextureUniforms()
-		unbind()
+		require(textureChannelsCount in 0 .. 3)
+		initShader()
 	}
 
 	fun setResolution(x: Float, y: Float, z: Float) = glUniform3f(resolutionLocation, x, y, z)
@@ -114,8 +56,25 @@ class ShadertoyShader(shaderFile: File, private val textureChannelsCount: Int) {
 
 	fun bind() = glUseProgram(handle)
 	fun unbind() = glUseProgram(0)
+	fun recompile() = initShader()
 
-	private fun createShaderProgram(vertexShaderSource: String, fragmentShaderSource: String): Int {
+	private fun initShader() {
+		if (handle > 0)
+			glDeleteProgram(handle)
+		handle = createShaderProgram()
+
+		initUniformLocations()
+
+		bind()
+		initTextureUniforms()
+		unbind()
+	}
+
+	private fun createShaderProgram(): Int {
+		val fragmentShaderSource = fragmentShaderSourceTemplate
+			.replace("#SAMPLER2D_UNIFORMS#", generateSampler2dUniformDeclaration())
+			.replace("#SHADERTOY_SOURCE#", loadShaderSource(shaderFile))
+
 		val vertexShaderHandle = compileShader(vertexShaderSource, GL_VERTEX_SHADER)
 		val fragmentShaderHandle = compileShader(fragmentShaderSource, GL_FRAGMENT_SHADER)
 
@@ -126,6 +85,11 @@ class ShadertoyShader(shaderFile: File, private val textureChannelsCount: Int) {
 		glBindAttribLocation(programHandle, 0, "in_position")
 
 		glLinkProgram(programHandle)
+
+		glDetachShader(programHandle, vertexShaderHandle)
+		glDetachShader(programHandle, fragmentShaderHandle)
+		glDeleteShader(vertexShaderHandle)
+		glDeleteShader(fragmentShaderHandle)
 
 		validateShaderLinking(programHandle)
 		validateShaderProgram(programHandle)
@@ -185,11 +149,62 @@ class ShadertoyShader(shaderFile: File, private val textureChannelsCount: Int) {
 		}
 	}
 
+	private fun initUniformLocations() {
+		resolutionLocation = getUniformLocation("iResolution")
+		timeLocation = getUniformLocation("iTime")
+		timeDeltaLocation = getUniformLocation("iTimeDelta")
+		frameLocation = getUniformLocation("iFrame")
+		for (index in channelTimeLocation.indices)
+			channelTimeLocation[index] = getUniformLocation("iChannelTime[$index]")
+		for (index in channelResolutionLocation.indices)
+			channelResolutionLocation[index] = getUniformLocation("iChannelResolution[$index]")
+		mouseLocation = getUniformLocation("iMouse")
+		dateLocation = getUniformLocation("iDate")
+		sampleRateLocation = getUniformLocation("iSampleRate")
+
+		for (index in textureChannelLocations.indices)
+			textureChannelLocations[index] = getUniformLocation("iChannel$index")
+	}
+
 	private fun getUniformLocation(name: String) = glGetUniformLocation(handle, name)
 
 	private fun loadShaderSource(shader: File): String {
 		return shader.inputStream().use { inputStream ->
 			inputStream.bufferedReader().readLines()
 		}.joinToString("\n") { it }
+	}
+
+	companion object {
+		private val vertexShaderSource = """
+			|#version 330
+			|layout(location = 0) in vec2 in_position;
+			|
+			|void main(void) {
+			|	gl_Position = vec4(in_position, 0.0, 1.0);
+			|}
+		""".trimMargin()
+
+		private val fragmentShaderSourceTemplate = """
+			|#version 330
+			|
+			|out vec4 color;
+			|
+			|uniform vec3 iResolution;
+			|uniform float iTime;
+			|uniform float iTimeDelta;
+			|uniform int iFrame;
+			|uniform float iChannelTime[4];
+			|uniform vec3 iChannelResolution[4];
+			|uniform vec4 iMouse;
+			|#SAMPLER2D_UNIFORMS#
+			|uniform vec4 iDate;
+			|uniform float iSampleRate;
+			|
+			|#SHADERTOY_SOURCE#
+			|
+			|void main(void) {
+			|	mainImage(color, gl_FragCoord.xy);
+			|}
+		""".trimMargin()
 	}
 }
